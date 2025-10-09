@@ -12,6 +12,8 @@ struct ExpertRequest {
     RobotInfo robot;
     std::promise<RobotInfo> completion_promise;
     
+    ExpertRequest() : robot() {}
+    
     ExpertRequest(const RobotInfo& r) : robot(r) {}
     
     // Move constructor and assignment for promise

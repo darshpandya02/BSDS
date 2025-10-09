@@ -1,10 +1,3 @@
-// #include <iostream>
-
-// int main(int argc, char *argv[]) {
-// 	std::cout << "Hello world!" << std::endl;
-// 	return 0;
-// }
-
 #include "ServerStub.h"
 #include "SocketComm.h"
 #include "ExpertQueue.h"
@@ -34,7 +27,8 @@ void ExpertEngineerThread(int expert_id, ExpertQueue* queue) {
     std::cout << "[Expert " << expert_id << "] Started\n";
     
     while (server_running) {
-        ExpertRequest request(RobotInfo()); // Placeholder
+        // Use brace initialization to avoid "most vexing parse"
+        ExpertRequest request{};
         
         if (!queue->DequeueRequest(request)) {
             break; // Shutdown signal received
