@@ -133,8 +133,8 @@ CXXFLAGS = -std=c++11 -Wall -Wextra -pthread -O2
 INCLUDES = -I.
 
 # Source files
-CLIENT_SRC = customer_client.cpp
-SERVER_SRC = factory_server.cpp
+CLIENT_SRC = ClientMain.cpp
+SERVER_SRC = ServerMain.cpp
 
 # Header dependencies
 HEADERS = Common.h SocketComm.h ClientStub.h ServerStub.h ExpertQueue.h

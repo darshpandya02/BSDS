@@ -187,5 +187,5 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// Compile: g++ -std=c++11 -pthread -O2 -o client customer_client.cpp
+// Compile: g++ -std=c++11 -pthread -O2 -o client ClientMain.cpp
 // Run: ./client 127.0.0.1 12345 16 1000 0

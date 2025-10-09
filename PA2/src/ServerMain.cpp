@@ -221,5 +221,5 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// Compile: g++ -std=c++11 -pthread -O2 -o server factory_server.cpp
+// Compile: g++ -std=c++11 -pthread -O2 -o server ServerMain.cpp
 // Run: ./server 12345 2
