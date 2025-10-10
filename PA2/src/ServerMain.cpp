@@ -39,6 +39,9 @@ void ExpertEngineerThread(int expert_id, ExpertQueue* queue) {
         // Add expert ID to robot info
         request.robot.expert_id = expert_id;
         
+
+        std::cout << "processed robot from Expert "<< request.robot.expert_id << "\n";
+                    
         // Notify the regular engineer that the work is done
         request.completion_promise.set_value(request.robot);
     }
@@ -78,7 +81,6 @@ void EngineerThread(int engineer_id, SocketComm* client_socket,
                     // Send request to expert engineer
                     std::future<RobotInfo> future = expert_queue->EnqueueRequest(robot);
 
-                    std::cout << "[Engineer " << engineer_id << "] Received processed robot from Expert "<< robot.expert_id << " for order " << order.order_number << "\n";
                     // Wait for expert to complete the work
                     try {
                         robot = future.get();
