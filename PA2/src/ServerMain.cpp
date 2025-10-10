@@ -31,6 +31,7 @@ void ExpertEngineerThread(int expert_id, ExpertQueue* queue) {
         ExpertRequest request{};
         
         if (!queue->DequeueRequest(request)) {
+            console.log("dequeueing request failed and exited")
             break; // Shutdown signal received
         }
         
