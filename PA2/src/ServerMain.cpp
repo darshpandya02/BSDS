@@ -73,9 +73,12 @@ void EngineerThread(int engineer_id, SocketComm* client_socket,
                 
                 // Check if special robot and experts are available
                 if (order.robot_type == 1 && has_experts && expert_queue) {
+
+                    std::cout << "[Engineer " << engineer_id << "] Sending order " << order.order_number << " to expert queue\n";
                     // Send request to expert engineer
                     std::future<RobotInfo> future = expert_queue->EnqueueRequest(robot);
 
+                    std::cout << "[Engineer " << engineer_id << "] Received processed robot from Expert "<< robot.expert_id << " for order " << order.order_number << "\n";
                     // Wait for expert to complete the work
                     try {
                         robot = future.get();

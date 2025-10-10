@@ -17,8 +17,41 @@ def load_experiment_data(filename):
         print(f"Error loading {filename}: {e}")
         return None
 
+# def plot_latency(experiments, output_file):
+#     """Plot latency graph (mean, min, max)"""
+#     plt.figure(figsize=(12, 6))
+    
+#     colors = ['blue', 'red', 'green', 'purple']
+#     markers = ['o', 's', '^', 'd']
+    
+#     for i, (name, df) in enumerate(experiments.items()):
+#         if df is not None:
+#             plt.plot(df['customers'], df['avg_latency'], 
+#                     label=f'{name} (Avg)', 
+#                     marker=markers[i], color=colors[i], linewidth=2)
+#             plt.plot(df['customers'], df['min_latency'], 
+#                     label=f'{name} (Min)', 
+#                     marker=markers[i], color=colors[i], 
+#                     linewidth=1, linestyle='--', alpha=0.5)
+#             plt.plot(df['customers'], df['max_latency'], 
+#                     label=f'{name} (Max)', 
+#                     marker=markers[i], color=colors[i], 
+#                     linewidth=1, linestyle=':', alpha=0.5)
+    
+#     plt.xlabel('Number of Customers', fontsize=12)
+#     plt.ylabel('Latency (μs)', fontsize=12)
+#     plt.title('Order Latency vs Number of Customers', fontsize=14, fontweight='bold')
+#     plt.legend(loc='best', fontsize=9)
+#     plt.grid(True, alpha=0.3)
+#     plt.xscale('log', base=2)
+#     plt.yscale('log')
+#     plt.tight_layout()
+#     plt.savefig(output_file, dpi=300)
+#     print(f"Saved: {output_file}")
+#     plt.close()
+
 def plot_latency(experiments, output_file):
-    """Plot latency graph (mean, min, max)"""
+    """Plot latency graph (mean, min, max) with automatic handling of bad data"""
     plt.figure(figsize=(12, 6))
     
     colors = ['blue', 'red', 'green', 'purple']
@@ -26,17 +59,34 @@ def plot_latency(experiments, output_file):
     
     for i, (name, df) in enumerate(experiments.items()):
         if df is not None:
+            # Ensure numeric values, coerce errors to NaN
+            df['customers'] = pd.to_numeric(df['customers'], errors='coerce')
+            df['avg_latency'] = pd.to_numeric(df['avg_latency'], errors='coerce')
+            df['min_latency'] = pd.to_numeric(df['min_latency'], errors='coerce')
+            df['max_latency'] = pd.to_numeric(df['max_latency'], errors='coerce')
+            
+            # Drop rows with any NaN
+            bad_rows = df[df[['customers','avg_latency','min_latency','max_latency']].isna().any(axis=1)]
+            if not bad_rows.empty:
+                print(f"Skipping bad rows in {name}:")
+                print(bad_rows)
+            df = df.dropna(subset=['customers','avg_latency','min_latency','max_latency'])
+            
+            if df.empty:
+                print(f"  No valid data left for {name}, skipping plot")
+                continue
+
             plt.plot(df['customers'], df['avg_latency'], 
-                    label=f'{name} (Avg)', 
-                    marker=markers[i], color=colors[i], linewidth=2)
+                     label=f'{name} (Avg)', 
+                     marker=markers[i], color=colors[i], linewidth=2)
             plt.plot(df['customers'], df['min_latency'], 
-                    label=f'{name} (Min)', 
-                    marker=markers[i], color=colors[i], 
-                    linewidth=1, linestyle='--', alpha=0.5)
+                     label=f'{name} (Min)', 
+                     marker=markers[i], color=colors[i], 
+                     linewidth=1, linestyle='--', alpha=0.5)
             plt.plot(df['customers'], df['max_latency'], 
-                    label=f'{name} (Max)', 
-                    marker=markers[i], color=colors[i], 
-                    linewidth=1, linestyle=':', alpha=0.5)
+                     label=f'{name} (Max)', 
+                     marker=markers[i], color=colors[i], 
+                     linewidth=1, linestyle=':', alpha=0.5)
     
     plt.xlabel('Number of Customers', fontsize=12)
     plt.ylabel('Latency (μs)', fontsize=12)
