@@ -12,26 +12,24 @@
 std::atomic<bool> server_running(true);
 ExpertQueue* global_expert_queue = nullptr;
 
-void SignalHandler(int signal) {
-    if (signal == SIGINT) {
-        std::cout << "\n\nShutting down server...\n";
-        server_running = false;
-        if (global_expert_queue) {
-            global_expert_queue->Shutdown();
-        }
-    }
-}
+// void SignalHandler(int signal) {
+//     if (signal == SIGINT) {
+//         server_running = false;
+//         if (global_expert_queue) {
+//             global_expert_queue->Shutdown();
+//         }
+//     }
+// }
 
 // Expert engineer thread function
 void ExpertEngineerThread(int expert_id, ExpertQueue* queue) {
     std::cout << "[Expert " << expert_id << "] Started\n";
     
     while (server_running) {
-        // Use brace initialization to avoid "most vexing parse"
-        ExpertRequest request{};
+        ExpertRequest request;
         
         if (!queue->DequeueRequest(request)) {
-            console.log("dequeueing request failed and exited")
+            std::cout << "[Expert " << expert_id << "] Dequeueing request failed and exited\n";
             break; // Shutdown signal received
         }
         
@@ -77,16 +75,22 @@ void EngineerThread(int engineer_id, SocketComm* client_socket,
                 if (order.robot_type == 1 && has_experts && expert_queue) {
                     // Send request to expert engineer
                     std::future<RobotInfo> future = expert_queue->EnqueueRequest(robot);
-                    
+
                     // Wait for expert to complete the work
-                    robot = future.get();
+                    try {
+                        robot = future.get();
+                    } catch (const std::exception& ex) {
+                        std::cerr << "[Engineer " << engineer_id << "] Expert processing aborted: " 
+                                  << ex.what() << "\n";
+                        break;
+                    }
                 }
-                
+
                 // Ship robot back to customer
                 server.ShipRobot(robot);
                 
             } catch (const std::exception& e) {
-                // Client likely disconnected (recv returns -1)
+                // Client likely disconnected
                 break;
             }
         }
@@ -128,8 +132,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Setup signal handler for graceful shutdown
-    signal(SIGINT, SignalHandler);
+    // // Setup signal handler for graceful shutdown
+    // signal(SIGINT, SignalHandler);
     
     try {
         ServerSocket server;
@@ -186,27 +190,27 @@ int main(int argc, char* argv[]) {
             }
         }
         
-        std::cout << "\nWaiting for engineer threads to finish...\n";
+        // std::cout << "\nWaiting for engineer threads to finish...\n";
         
-        // Wait for all engineer threads to complete
-        for (auto& thread : engineer_threads) {
-            if (thread.joinable()) {
-                thread.join();
-            }
-        }
+        // // Wait for all engineer threads to complete
+        // for (auto& thread : engineer_threads) {
+        //     if (thread.joinable()) {
+        //         thread.join();
+        //     }
+        // }
         
-        // Shutdown expert thread pool
-        if (num_experts > 0) {
-            std::cout << "Shutting down expert thread pool...\n";
-            expert_queue.Shutdown();
-            for (auto& thread : expert_threads) {
-                if (thread.joinable()) {
-                    thread.join();
-                }
-            }
-        }
+        // // Shutdown expert thread pool
+        // if (num_experts > 0) {
+        //     std::cout << "Shutting down expert thread pool...\n";
+        //     expert_queue.Shutdown();
+        //     for (auto& thread : expert_threads) {
+        //         if (thread.joinable()) {
+        //             thread.join();
+        //         }
+        //     }
+        // }
         
-        std::cout << "Server shutdown complete.\n";
+        // std::cout << "Server shutdown complete.\n";
         
     } catch (const std::exception& e) {
         std::cerr << "Server error: " << e.what() << std::endl;
