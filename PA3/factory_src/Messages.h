@@ -1,75 +1,74 @@
-// #ifndef __MESSAGES_H__
-// #define __MESSAGES_H__
+// #ifndef MESSAGES_H
+// #define MESSAGES_H
 
-// #include <string>
+// #include <iostream>
 
-// class RobotOrder {
+// // CustomerRequest replaces RobotOrder
+// class CustomerRequest {
 // private:
-// 	int customer_id;
-// 	int order_number;
-// 	int robot_type;
+//     int customer_id;
+//     int order_number;
+//     int request_type;  // 1 = robot order, 2 = record read
 
 // public:
-// 	RobotOrder();
-// 	void operator = (const RobotOrder &order) {
-// 		customer_id = order.customer_id;
-// 		order_number = order.order_number;
-// 		robot_type = order.robot_type;
-// 	}
-// 	void SetOrder(int cid, int order_num, int type);
-// 	int GetCustomerId();
-// 	int GetOrderNumber();
-// 	int GetRobotType();
-
-// 	int Size();
-
-// 	void Marshal(char *buffer);
-// 	void Unmarshal(char *buffer);
-
-// 	bool IsValid();
-
-// 	void Print();
+//     CustomerRequest();
+//     void SetRequest(int id, int number, int type);
+//     int GetCustomerId();
+//     int GetOrderNumber();
+//     int GetRequestType();
+//     int Size();
+//     void Marshal(char *buffer);
+//     void Unmarshal(char *buffer);
+//     bool IsValid();
+//     void Print();
 // };
 
+// // RobotInfo stays similar but expert_id becomes admin_id
 // class RobotInfo {
 // private:
-// 	int customer_id;
-// 	int order_number;
-// 	int robot_type;
-// 	int engineer_id;
-// 	int expert_id;
+//     int customer_id;
+//     int order_number;
+//     int request_type;
+//     int engineer_id;
+//     int admin_id;  // renamed from expert_id
 
 // public:
-// 	RobotInfo();
-// 	void operator = (const RobotInfo &info) {
-// 		customer_id = info.customer_id;
-// 		order_number = info.order_number;
-// 		robot_type = info.robot_type;
-// 		engineer_id = info.engineer_id;
-// 		expert_id = info.expert_id;
-// 	}
-// 	void SetInfo(int cid, int order_num, int type, int engid, int expid);
-// 	void CopyOrder(RobotOrder order);
-// 	void SetEngineerId(int id);
-// 	void SetExpertId(int id);
-
-// 	int GetCustomerId();
-// 	int GetOrderNumber();
-// 	int GetRobotType();
-// 	int GetEngineerId();
-// 	int GetExpertId();
-
-// 	int Size();
-
-// 	void Marshal(char *buffer);
-// 	void Unmarshal(char *buffer);
-
-// 	bool IsValid();
-
-// 	void Print();
+//     RobotInfo();
+//     void SetInfo(int id, int number, int type, int engid, int adminid);
+//     void CopyRequest(CustomerRequest request);
+//     void SetEngineerId(int id);
+//     void SetAdminId(int id);
+//     int GetCustomerId();
+//     int GetOrderNumber();
+//     int GetRequestType();
+//     int GetEngineerId();
+//     int GetAdminId();
+//     int Size();
+//     void Marshal(char *buffer);
+//     void Unmarshal(char *buffer);
+//     bool IsValid();
+//     void Print();
 // };
 
-// #endif // #ifndef __MESSAGES_H__
+// // CustomerRecord for record read responses
+// class CustomerRecord {
+// private:
+//     int customer_id;
+//     int last_order;
+
+// public:
+//     CustomerRecord();
+//     void SetRecord(int id, int order);
+//     int GetCustomerId();
+//     int GetLastOrder();
+//     int Size();
+//     void Marshal(char *buffer);
+//     void Unmarshal(char *buffer);
+//     bool IsValid();
+//     void Print();
+// };
+
+// #endif
 
 #ifndef MESSAGES_H
 #define MESSAGES_H
@@ -103,7 +102,7 @@ private:
     int order_number;
     int request_type;
     int engineer_id;
-    int admin_id;  // renamed from expert_id
+    int admin_id;
 
 public:
     RobotInfo();
@@ -123,7 +122,7 @@ public:
     void Print();
 };
 
-// New: CustomerRecord for record read responses
+// CustomerRecord for record read responses
 class CustomerRecord {
 private:
     int customer_id;
@@ -139,6 +138,58 @@ public:
     void Unmarshal(char *buffer);
     bool IsValid();
     void Print();
+};
+
+// Identification message
+class IdentificationMsg {
+private:
+    int id_type;  // 0 = customer, 1 = PFA
+
+public:
+    IdentificationMsg();
+    void SetIdType(int type);
+    int GetIdType();
+    int Size();
+    void Marshal(char *buffer);
+    void Unmarshal(char *buffer);
+};
+
+// Replication request from PFA to IFA
+class ReplicationRequest {
+private:
+    int factory_id;
+    int committed_index;
+    int last_index;
+    int opcode;
+    int arg1;
+    int arg2;
+
+public:
+    ReplicationRequest();
+    void SetRequest(int fid, int cindex, int lindex, int op, int a1, int a2);
+    int GetFactoryId();
+    int GetCommittedIndex();
+    int GetLastIndex();
+    int GetOpcode();
+    int GetArg1();
+    int GetArg2();
+    int Size();
+    void Marshal(char *buffer);
+    void Unmarshal(char *buffer);
+};
+
+// Replication response from IFA to PFA
+class ReplicationResponse {
+private:
+    int status;  // 0 = success
+
+public:
+    ReplicationResponse();
+    void SetStatus(int s);
+    int GetStatus();
+    int Size();
+    void Marshal(char *buffer);
+    void Unmarshal(char *buffer);
 };
 
 #endif

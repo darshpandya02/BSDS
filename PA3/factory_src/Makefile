@@ -29,7 +29,6 @@ CMN_HDRS := $(filter-out $(SVR_HDRS) $(CLNT_HDRS), $(HDRS))
 CMN_SRCS := $(filter-out $(SVR_SRCS) $(CLNT_SRCS), $(SRCS))
 CMN_OBJS := $(CMN_SRCS:.cpp=.o)
 
-
 # -Wall prints: all warnings
 # -std=c++11: use of C++11
 CFLAGS := -Wall -std=c++11 
@@ -84,8 +83,8 @@ debug: $(TARGET)
 #    in the folder the make program won't be able to execute the g++ command and
 #    it will look for another rules to create the object (.o) files
 
-server: $(SVR_OBJS) $(CMN_OBJS)
-	$(CXX) $(LFLAGS) -o $@ $^ 
+server: $(SVR_OBJS) $(CMN_OBJS) ClientSocket.o
+	$(CXX) $(LFLAGS) -o $@ $^
 
 # This rule defines how to build the server specific object files.
 # To build object files, corresponding source code files (i.e., cpp and h files) are
