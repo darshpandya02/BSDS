@@ -1,117 +1,13 @@
-
-// #include <iostream>
-// #include <memory>
-
-// #include "ServerThread.h"
-// #include "ServerStub.h"
-
-// RobotInfo RobotFactory::CreateRobotAndUpdateRecord(CustomerRequest request, int engineer_id) {
-//     RobotInfo robot;
-//     robot.CopyRequest(request);
-//     robot.SetEngineerId(engineer_id);
-
-//     // Send request to admin and wait for response
-//     std::promise<int> prom;
-//     std::future<int> fut = prom.get_future();
-
-//     std::unique_ptr<AdminRequest> req = std::unique_ptr<AdminRequest>(new AdminRequest);
-//     req->request = request;
-//     req->engineer_id = engineer_id;
-//     req->prom = std::move(prom);
-
-//     arq_lock.lock();
-//     arq.push(std::move(req));
-//     arq_cv.notify_one();
-//     arq_lock.unlock();
-
-//     int admin_id = fut.get();
-//     robot.SetAdminId(admin_id);
-    
-//     return robot;
-// }
-
-// CustomerRecord RobotFactory::ReadCustomerRecord(int customer_id) {
-//     CustomerRecord record;
-    
-//     record_lock.lock();
-//     auto it = customer_record.find(customer_id);
-//     if (it != customer_record.end()) {
-//         record.SetRecord(customer_id, it->second);
-//     } else {
-//         record.SetRecord(-1, -1);  // Not found
-//     }
-//     record_lock.unlock();
-    
-//     return record;
-// }
-
-// void RobotFactory::EngineerThread(std::unique_ptr<ServerSocket> socket, int id) {
-//     int engineer_id = id;
-//     CustomerRequest request;
-//     RobotInfo robot;
-//     CustomerRecord record;
-
-//     ServerStub stub;
-//     stub.Init(std::move(socket));
-
-//     while (true) {
-//         request = stub.ReceiveRequest();
-//         if (!request.IsValid()) {
-//             break;
-//         }
-        
-//         int request_type = request.GetRequestType();
-//         switch (request_type) {
-//             case 1:  // Robot order
-//                 robot = CreateRobotAndUpdateRecord(request, engineer_id);
-//                 stub.ShipRobot(robot);
-//                 break;
-//             case 2:  // Customer record read
-//                 record = ReadCustomerRecord(request.GetCustomerId());
-//                 stub.ReturnRecord(record);
-//                 break;
-//             default:
-//                 std::cout << "Undefined request type: " << request_type << std::endl;
-//         }
-//     }
-// }
-
-// void RobotFactory::AdminThread(int id) {
-//     std::unique_lock<std::mutex> ul(arq_lock, std::defer_lock);
-    
-//     while (true) {
-//         ul.lock();
-//         if (arq.empty()) {
-//             arq_cv.wait(ul, [this]{ return !arq.empty(); });
-//         }
-
-//         auto req = std::move(arq.front());
-//         arq.pop();
-//         ul.unlock();
-
-//         // Create log entry
-//         MapOp op;
-//         op.opcode = 1;  // Update operation
-//         op.arg1 = req->request.GetCustomerId();
-//         op.arg2 = req->request.GetOrderNumber();
-
-//         // Append to log and apply to map
-//         record_lock.lock();
-//         smr_log.push_back(op);
-//         customer_record[op.arg1] = op.arg2;
-//         record_lock.unlock();
-
-//         // Notify engineer that update is complete
-//         req->prom.set_value(id);
-//     }
-// }
-
 #include <iostream>
 #include <memory>
+#include <string.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
 
 #include "ServerThread.h"
 #include "ServerStub.h"
-#include "ClientStub.h"
 
 RobotFactory::RobotFactory(int id, std::vector<PeerInfo> peer_list) {
     factory_id = id;
@@ -120,6 +16,11 @@ RobotFactory::RobotFactory(int id, std::vector<PeerInfo> peer_list) {
     last_index = -1;
     committed_index = -1;
     connections_established = false;
+    
+    // Initialize backup_alive vector
+    for (size_t i = 0; i < peer_list.size(); i++) {
+        backup_alive.push_back(false);
+    }
 }
 
 void RobotFactory::EstablishBackupConnections() {
@@ -129,13 +30,31 @@ void RobotFactory::EstablishBackupConnections() {
         return;
     }
 
-    for (auto& peer : peers) {
-        auto client_socket = std::unique_ptr<ClientSocket>(new ClientSocket());
-        if (!client_socket->Init(peer.ip, peer.port)) {
-            std::cout << "Failed to connect to peer " << peer.id << std::endl;
-            connection_lock.unlock();
-            return;
+    for (size_t i = 0; i < peers.size(); i++) {
+        // Create socket
+        int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock_fd < 0) {
+            backup_connections.push_back(nullptr);
+            backup_alive[i] = false;
+            continue;
         }
+
+        // Connect to peer
+        struct sockaddr_in addr;
+        memset(&addr, '\0', sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = inet_addr(peers[i].ip.c_str());
+        addr.sin_port = htons(peers[i].port);
+
+        if (connect(sock_fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+            close(sock_fd);
+            backup_connections.push_back(nullptr);
+            backup_alive[i] = false;
+            continue;
+        }
+
+        // Create a ServerSocket wrapper
+        auto client_socket = std::unique_ptr<ServerSocket>(new ServerSocket(sock_fd, true));
 
         // Send identification message (1 = PFA)
         IdentificationMsg id_msg;
@@ -143,19 +62,106 @@ void RobotFactory::EstablishBackupConnections() {
         char buffer[32];
         id_msg.Marshal(buffer);
         if (!client_socket->Send(buffer, id_msg.Size(), 0)) {
-            std::cout << "Failed to send identification to peer " << peer.id << std::endl;
-            connection_lock.unlock();
-            return;
+            backup_connections.push_back(nullptr);
+            backup_alive[i] = false;
+            continue;
         }
 
         backup_connections.push_back(std::move(client_socket));
+        backup_alive[i] = true;
     }
 
     connections_established = true;
     connection_lock.unlock();
 }
 
+bool RobotFactory::TryReconnectBackup(int backup_index) {
+    // Try to reconnect to a failed backup
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd < 0) {
+        return false;
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, '\0', sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr(peers[backup_index].ip.c_str());
+    addr.sin_port = htons(peers[backup_index].port);
+
+    if (connect(sock_fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        close(sock_fd);
+        return false;
+    }
+
+    // Create a ServerSocket wrapper
+    auto client_socket = std::unique_ptr<ServerSocket>(new ServerSocket(sock_fd, true));
+
+    // Send identification message (1 = PFA)
+    IdentificationMsg id_msg;
+    id_msg.SetIdType(1);
+    char buffer[32];
+    id_msg.Marshal(buffer);
+    if (!client_socket->Send(buffer, id_msg.Size(), 0)) {
+        return false;
+    }
+
+    backup_connections[backup_index] = std::move(client_socket);
+    backup_alive[backup_index] = true;
+
+    return true;
+}
+
+bool RobotFactory::SendCatchupData(int backup_index) {
+    // Send all committed log entries to a recovering backup
+    char buffer[64];
+    
+    record_lock.lock();
+    for (int i = 0; i <= committed_index; i++) {
+        if (i >= (int)smr_log.size()) break;
+        
+        MapOp& op = smr_log[i];
+        ReplicationRequest req;
+        
+        // For catchup, we send entries with committed_index = i-1, last_index = i
+        // This way each entry gets committed immediately on the backup
+        int catch_committed = (i == 0) ? -1 : i - 1;
+        req.SetRequest(factory_id, catch_committed, i, op.opcode, op.arg1, op.arg2);
+        req.Marshal(buffer);
+
+        if (!backup_connections[backup_index]->Send(buffer, req.Size(), 0)) {
+            record_lock.unlock();
+            backup_connections[backup_index] = nullptr;
+            backup_alive[backup_index] = false;
+            return false;
+        }
+
+        ReplicationResponse resp;
+        if (!backup_connections[backup_index]->Recv(buffer, resp.Size(), 0)) {
+            record_lock.unlock();
+            backup_connections[backup_index] = nullptr;
+            backup_alive[backup_index] = false;
+            return false;
+        }
+    }
+    record_lock.unlock();
+
+    return true;
+}
+
 bool RobotFactory::ReplicateToBackup(int backup_index, MapOp& op) {
+    // Check if backup is alive
+    if (!backup_alive[backup_index] || backup_connections[backup_index] == nullptr) {
+        // Try to reconnect
+        if (!TryReconnectBackup(backup_index)) {
+            return false;
+        }
+        
+        // Send catchup data
+        if (!SendCatchupData(backup_index)) {
+            return false;
+        }
+    }
+
     ReplicationRequest req;
     ReplicationResponse resp;
     char buffer[64];
@@ -164,10 +170,14 @@ bool RobotFactory::ReplicateToBackup(int backup_index, MapOp& op) {
     req.Marshal(buffer);
 
     if (!backup_connections[backup_index]->Send(buffer, req.Size(), 0)) {
+        backup_connections[backup_index] = nullptr;
+        backup_alive[backup_index] = false;
         return false;
     }
 
     if (!backup_connections[backup_index]->Recv(buffer, resp.Size(), 0)) {
+        backup_connections[backup_index] = nullptr;
+        backup_alive[backup_index] = false;
         return false;
     }
 
@@ -238,6 +248,7 @@ void RobotFactory::EngineerThread(std::unique_ptr<ServerSocket> socket, int id) 
     while (true) {
         request = stub.ReceiveRequest();
         if (!request.IsValid()) {
+            // Socket error or client disconnected - terminate gracefully
             break;
         }
         
@@ -245,11 +256,17 @@ void RobotFactory::EngineerThread(std::unique_ptr<ServerSocket> socket, int id) 
         switch (request_type) {
             case 1:  // Robot order
                 robot = CreateRobotAndUpdateRecord(request, engineer_id);
-                stub.ShipRobot(robot);
+                if (!stub.ShipRobot(robot)) {
+                    // Failed to send - client disconnected
+                    return;
+                }
                 break;
             case 2:  // Customer record read
                 record = ReadCustomerRecord(request.GetCustomerId());
-                stub.ReturnRecord(record);
+                if (!stub.ReturnRecord(record)) {
+                    // Failed to send - client disconnected
+                    return;
+                }
                 break;
             default:
                 std::cout << "Undefined request type: " << request_type << std::endl;
@@ -289,13 +306,15 @@ void RobotFactory::AdminThread(int id) {
         record_lock.unlock();
 
         // Replicate to all backups sequentially
+        int successful_replications = 0;
         for (size_t i = 0; i < backup_connections.size(); i++) {
-            if (!ReplicateToBackup(i, op)) {
-                std::cout << "Replication to backup " << i << " failed" << std::endl;
+            if (ReplicateToBackup(i, op)) {
+                successful_replications++;
             }
+            // Continue even if some backups fail
         }
 
-        // Apply to local map and commit
+        // Apply to local map and commit (even if some backups failed)
         record_lock.lock();
         customer_record[op.arg1] = op.arg2;
         committed_index = last_index;
@@ -314,6 +333,10 @@ void RobotFactory::IdleFactoryAdminThread(std::unique_ptr<ServerSocket> socket) 
     while (true) {
         // Receive replication request
         if (!socket->Recv(buffer, req.Size(), 0)) {
+            // Primary failed or connection lost
+            record_lock.lock();
+            primary_id = -1;
+            record_lock.unlock();
             break;
         }
         req.Unmarshal(buffer);
@@ -346,9 +369,11 @@ void RobotFactory::IdleFactoryAdminThread(std::unique_ptr<ServerSocket> socket) 
         // Apply committed entries to customer_record
         while (committed_index < req.GetCommittedIndex()) {
             committed_index++;
-            MapOp& committed_op = smr_log[committed_index];
-            if (committed_op.opcode == 1) {
-                customer_record[committed_op.arg1] = committed_op.arg2;
+            if (committed_index < (int)smr_log.size()) {
+                MapOp& committed_op = smr_log[committed_index];
+                if (committed_op.opcode == 1) {
+                    customer_record[committed_op.arg1] = committed_op.arg2;
+                }
             }
         }
 
@@ -358,6 +383,10 @@ void RobotFactory::IdleFactoryAdminThread(std::unique_ptr<ServerSocket> socket) 
         resp.SetStatus(0);
         resp.Marshal(buffer);
         if (!socket->Send(buffer, resp.Size(), 0)) {
+            // Failed to send response - primary failed
+            record_lock.lock();
+            primary_id = -1;
+            record_lock.unlock();
             break;
         }
     }
